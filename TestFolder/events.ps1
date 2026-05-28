@@ -1,1 +1,1 @@
-Get-eventlog -logname system -newest 10
+Get-eventlog -logname system -newest 5
