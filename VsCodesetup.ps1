@@ -146,7 +146,15 @@ function Install-CppDesktopBridgeRuntime {
 			Remove-AppxPackage -Package $installedRuntime.PackageFullName -ErrorAction Stop
 			# Wait for the package to be fully removed
 			Write-Host 'Waiting for package removal to complete...'
-			Start-Sleep -Seconds 3
+			Start-Sleep -Seconds 5
+			
+			# Verify removal
+			$stillInstalled = Get-AppxPackage -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue
+			if ($stillInstalled) {
+				Write-Warning "Package removal verification failed. Attempting forced removal..."
+				Remove-AppxPackage -Package $installedRuntime.PackageFullName -AllUsers -ErrorAction Stop
+				Start-Sleep -Seconds 5
+			}
 		} catch {
 			$msg = ($_ | Out-String).Trim()
 			Write-Warning "Removing older Microsoft.VCLibs.140.00.UWPDesktop failed: ${msg}"
@@ -176,6 +184,11 @@ function Install-CppDesktopBridgeRuntime {
 	$verifyRuntime = Get-AppxPackage -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue | Select-Object -First 1
 	if ($verifyRuntime) {
 		Write-Host "VCLibs installation verified: $($verifyRuntime.Version)"
+		if ([version]$verifyRuntime.Version -lt [version]$MinimumVersion) {
+			throw "Installed VCLibs version $($verifyRuntime.Version) is still below minimum required $MinimumVersion"
+		}
+	} else {
+		throw "VCLibs installation verification failed"
 	}
 }
 
@@ -188,7 +201,7 @@ function Install-DotNetSdk10 {
 	$rawOutput = & winget install --id Microsoft.DotNet.SDK.10 --exact --silent --disable-interactivity --accept-source-agreements --accept-package-agreements 2>&1 | Out-String
 	$rc = $LASTEXITCODE
 
-	if ($rc -eq 0 -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions available') {
+	if ($rc -eq 0 -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions availab[...]') {
 		Write-Host '.NET 10 SDK is installed or up to date.'
 		return
 	}
