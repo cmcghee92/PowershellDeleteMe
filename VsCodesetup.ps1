@@ -42,6 +42,11 @@ function Install-DotNetFramework481 {
 
 	Write-Host 'Installing .NET Framework 4.8.1.'
 	$process = Start-Process -FilePath $installerPath -ArgumentList @('/q', '/norestart') -Wait -NoNewWindow -PassThru
+	if ($process.ExitCode -eq 3010) {
+		Write-Warning '.NET Framework 4.8.1 installed successfully, but a reboot is required.'
+		return
+	}
+
 	if ($process.ExitCode -ne 0) {
 		throw "The .NET Framework 4.8.1 installer failed with exit code $($process.ExitCode)."
 	}
