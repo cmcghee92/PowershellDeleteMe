@@ -1,6 +1,39 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# 1. Check if the Windows App Runtime 1.8 framework is already installed
+$FrameworkName = "Microsoft.WindowsAppRuntime.1.8"
+$IsInstalled = Get-AppxPackage -AllUsers -Name $FrameworkName | Where-Object { $_.Version -ge "8000.616.304.0" }
+
+if (-not $IsInstalled) {
+    Write-Host "[INFO] Missing required framework: $FrameworkName. Installing now..." -ForegroundColor Yellow
+   
+    # Define download details for Windows App SDK 1.8
+    $RuntimeUrl = "https://aka.ms/windowsappsdk/1.8/1.8.251106002/windowsappruntimeinstall-x64.exe"
+    $OutputPath = "$env:TEMP\WindowsAppRuntimeInstall-x64.exe"
+   
+    # Download the web installer bootstrapper
+    Write-Host "[INFO] Downloading runtime installer from Microsoft..."
+    Invoke-WebRequest -Uri $RuntimeUrl -OutFile $OutputPath
+   
+    # Silently execute the installation system-wide with standard parameters
+    Write-Host "[INFO] Running silent installation..."
+    $InstallProcess = Start-Process -FilePath $OutputPath -ArgumentList "--quiet", "--force" -Wait -PassThru
+   
+    if ($InstallProcess.ExitCode -eq 0) {
+        Write-Host "[SUCCESS] Windows App Runtime 1.8 installed successfully." -ForegroundColor Green
+    } else {
+        Write-Warning "[ERROR] Runtime installer exited with code $($InstallProcess.ExitCode). Script might fail."
+    }
+   
+    # Cleanup installer file
+    Remove-Item -Path $OutputPath -Force -ErrorAction SilentlyContinue
+} else {
+    Write-Host "[INFO] $FrameworkName is already present. Proceeding..." -ForegroundColor Green
+}
+
+# --- Your original deployment script logic resumes below ---
+
 function Get-DotNetFrameworkRelease {
 	$path = 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full'
 	if (-not (Test-Path $path)) {
@@ -96,6 +129,47 @@ function Install-AppInstallerFromMicrosoft {
 	Add-AppxPackage -Path $installerPath -ErrorAction Stop
 }
 
+function Install-CppDesktopBridgeRuntime {
+	param(
+		[string]$MinimumVersion = '14.0.33728.0'
+	)
+
+	$installedRuntime = Get-AppxPackage -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue | Select-Object -First 1
+	if ($installedRuntime) {
+		if ([version]$installedRuntime.Version -ge [version]$MinimumVersion) {
+			Write-Host "Microsoft.VCLibs.140.00.UWPDesktop is already installed: $($installedRuntime.Version)"
+			return
+		}
+
+		Write-Host "Microsoft.VCLibs.140.00.UWPDesktop $($installedRuntime.Version) is older than required $MinimumVersion. Reinstalling."
+		try {
+			Remove-AppxPackage -Package $installedRuntime.PackageFullName -ErrorAction Stop
+		} catch {
+			$msg = ($_ | Out-String).Trim()
+			Write-Warning "Removing older Microsoft.VCLibs.140.00.UWPDesktop failed: ${msg}"
+		}
+	}
+
+	$tempDir = Join-Path $env:TEMP 'powershelldelete-me-setup'
+	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+	$runtimeUrl = if ([Environment]::Is64BitOperatingSystem) {
+		'https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx'
+	} else {
+		'https://aka.ms/Microsoft.VCLibs.x86.14.00.Desktop.appx'
+	}
+
+	$runtimePath = Join-Path $tempDir 'Microsoft.VCLibs.140.00.UWPDesktop.appx'
+	Write-Host 'Downloading Microsoft C++ Runtime framework for Desktop Bridge.'
+	Invoke-WebRequest -Uri $runtimeUrl -OutFile $runtimePath
+
+	Write-Host 'Installing Microsoft C++ Runtime framework for Desktop Bridge.'
+	$installResult = Add-AppxPackage -Path $runtimePath -ErrorAction Stop
+	if ($installResult) {
+		Write-Host 'Microsoft C++ Runtime framework for Desktop Bridge installed successfully.'
+	}
+}
+
 function Install-DotNetSdk10 {
 	if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 		throw 'winget was not found after installing Microsoft App Installer.'
@@ -131,6 +205,7 @@ if ($version -eq '4.8.1 or later') {
 	Write-Host ".NET Framework check complete: $version"
 }
 
+Install-CppDesktopBridgeRuntime
 Install-AppInstallerFromMicrosoft
 
 Install-DotNetSdk10
