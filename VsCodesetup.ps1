@@ -15,10 +15,45 @@ function Refresh-MicrosoftStore {
 	}
 }
 
+function Install-WindowsAppRuntime18 {
+	param(
+		[string]$MinimumVersion = '8000.616.304.0'
+	)
+
+	$installedRuntime = Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime*' -ErrorAction SilentlyContinue |
+		Where-Object { [version]$_.Version -ge [version]$MinimumVersion } |
+		Select-Object -First 1
+
+	if ($installedRuntime) {
+		Write-Host "Windows App Runtime is already installed: $($installedRuntime.Name) $($installedRuntime.Version)"
+		return
+	}
+
+	$tempDir = Join-Path $env:TEMP 'powershelldelete-me-setup'
+	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+	$runtimeInstallerUrl = if ([Environment]::Is64BitOperatingSystem) {
+		'https://aka.ms/windowsappsdk/1.8/1.8.260508005/windowsappruntimeinstall-x64.exe'
+	} else {
+		'https://aka.ms/windowsappsdk/1.8/1.8.260508005/windowsappruntimeinstall-x86.exe'
+	}
+
+	$runtimeInstallerPath = Join-Path $tempDir 'WindowsAppRuntimeInstall.exe'
+	Invoke-InstallerDownload -Url $runtimeInstallerUrl -DestinationPath $runtimeInstallerPath
+
+	Write-Host 'Installing Windows App Runtime 1.8.'
+	$proc = Start-Process -FilePath $runtimeInstallerPath -ArgumentList '--quiet' -Wait -NoNewWindow -PassThru
+	if ($proc.ExitCode -ne 0) {
+		throw "Windows App Runtime installer failed with exit code $($proc.ExitCode)."
+	}
+}
+
 function Install-AppInstallerFromMicrosoft {
 	$tempDir = Join-Path $env:TEMP 'powershelldelete-me-setup'
 	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 	$preferredArch = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x86' }
+
+	Install-WindowsAppRuntime18
 
 	$installerPath = Join-Path $tempDir 'Microsoft.AppInstaller.msixbundle'
 	Invoke-InstallerDownload -Url 'https://aka.ms/getwinget' -DestinationPath $installerPath
