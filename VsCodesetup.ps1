@@ -1,10 +1,59 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Assert-WingetAvailable {
-	if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-		throw 'winget is not installed or not available on PATH.'
+function Refresh-MicrosoftStore {
+	$wsreset = Get-Command wsreset.exe -ErrorAction SilentlyContinue
+	if (-not $wsreset) {
+		Write-Warning 'wsreset.exe was not found, so the Microsoft Store cannot be refreshed automatically.'
+		return
 	}
+
+	Write-Host 'Refreshing Microsoft Store.'
+	$proc = Start-Process -FilePath $wsreset.Source -ArgumentList '-i' -Wait -NoNewWindow -PassThru
+	if ($proc.ExitCode -ne 0) {
+		Write-Warning "Microsoft Store refresh exited with code $($proc.ExitCode)."
+	}
+}
+
+function Install-AppInstallerFromMicrosoft {
+	$tempDir = Join-Path $env:TEMP 'powershelldelete-me-setup'
+	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+	$installerPath = Join-Path $tempDir 'Microsoft.AppInstaller.msixbundle'
+	Invoke-InstallerDownload -Url 'https://aka.ms/getwinget' -DestinationPath $installerPath
+
+	Write-Host 'Installing Microsoft App Installer.'
+	Add-AppxPackage -Path $installerPath
+}
+
+function Ensure-WingetAvailable {
+	if (Get-Command winget -ErrorAction SilentlyContinue) {
+		return
+	}
+
+	Write-Host 'winget was not found. Installing Microsoft App Installer.'
+	Install-AppInstallerFromMicrosoft
+
+	if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+		throw 'winget is still not installed or available on PATH after installing Microsoft App Installer.'
+	}
+}
+
+function Update-AppInstaller {
+	if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+		return
+	}
+
+	Write-Host 'Updating Microsoft App Installer.'
+	$rawOutput = & winget upgrade --id Microsoft.AppInstaller --exact --silent --disable-interactivity --accept-source-agreements --accept-package-agreements 2>&1 | Out-String
+	$rc = $LASTEXITCODE
+
+	if ($rc -eq 0 -or $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions are available' -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or $rawOutput -match 'Found an existing package') {
+		Write-Host 'Microsoft App Installer is installed or up to date.'
+		return
+	}
+
+	Write-Warning "Microsoft App Installer update did not complete successfully. Output:`n$rawOutput"
 }
 
 function Get-LatestGitHubAssetUrl {
@@ -169,7 +218,9 @@ function Ensure-RepositoryFolder {
 	New-Item -ItemType Directory -Path $repositoryFolder -Force | Out-Null
 }
 
-Assert-WingetAvailable
+Refresh-MicrosoftStore
+Ensure-WingetAvailable
+Update-AppInstaller
 
 Write-Host 'Preparing GitHub repositories folder.'
 Ensure-RepositoryFolder
