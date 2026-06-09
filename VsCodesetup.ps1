@@ -26,8 +26,8 @@ function Install-AppInstallerFromMicrosoft {
 	try {
 		Add-AppxPackage -Path $installerPath -ErrorAction Stop
 	} catch {
-		$err = $_
-		Write-Warning "Initial Add-AppxPackage failed: $err"
+		$err = ($_ | Out-String).Trim()
+		Write-Warning ("Initial Add-AppxPackage failed: {0}" -f $err)
 		# Attempt to extract bundle and install dependency packages (e.g., Windows App Runtime)
 		$extractDir = Join-Path $tempDir 'msixbundle_contents'
 		if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }
@@ -44,7 +44,8 @@ function Install-AppInstallerFromMicrosoft {
 				[System.IO.Compression.ZipFile]::ExtractToDirectory($installerPath, $extractDir)
 				$extracted = $true
 			} catch {
-				Write-Warning "Failed to extract msixbundle: $_"
+				$msg = ($_ | Out-String).Trim()
+				Write-Warning ("Failed to extract msixbundle: {0}" -f $msg)
 			}
 		}
 
@@ -60,7 +61,8 @@ function Install-AppInstallerFromMicrosoft {
 					Write-Host "Installing dependency package $p"
 					Add-AppxPackage -Path $p -ErrorAction Stop
 				} catch {
-					Write-Warning "Failed to install dependency package $p: $_"
+					$msg = ($_ | Out-String).Trim()
+					Write-Warning ("Failed to install dependency package '{0}': {1}" -f $p, $msg)
 				}
 			}
 
@@ -70,7 +72,8 @@ function Install-AppInstallerFromMicrosoft {
 				Add-AppxPackage -Path $installerPath -ErrorAction Stop
 				return
 			} catch {
-				Write-Warning "Retry Add-AppxPackage failed: $_"
+				$msg = ($_ | Out-String).Trim()
+				Write-Warning ("Retry Add-AppxPackage failed: {0}" -f $msg)
 			}
 		}
 
@@ -115,7 +118,8 @@ function Ensure-MicrosoftStoreUpToDate {
 			Write-Host 'Re-registering Microsoft Store package.'
 			Add-AppxPackage -DisableDevelopmentMode -Register $manifest -ErrorAction Stop
 		} catch {
-			Write-Warning "Re-registering Microsoft Store failed: $_"
+			$msg = ($_ | Out-String).Trim()
+			Write-Warning ("Re-registering Microsoft Store failed: {0}" -f $msg)
 		}
 	} else {
 		Write-Warning "AppxManifest not found at $manifest; skipping re-register step."
@@ -127,7 +131,8 @@ function Ensure-MicrosoftStoreUpToDate {
 			Write-Host 'Attempting winget upgrade for Microsoft Store.'
 			& winget upgrade --id Microsoft.WindowsStore --exact --silent --disable-interactivity --accept-source-agreements --accept-package-agreements 2>&1 | Out-String | Out-Null
 		} catch {
-			Write-Warning "winget upgrade for Microsoft Store failed: $_"
+			$msg = ($_ | Out-String).Trim()
+			Write-Warning ("winget upgrade for Microsoft Store failed: {0}" -f $msg)
 		}
 	}
 
@@ -257,7 +262,8 @@ function Install-GitForWindows {
 		) -DisplayName 'Git for Windows'
 		return
 	} catch {
-		Write-Warning "winget Git install failed, falling back to GitHub installer: $_"
+		$msg = ($_ | Out-String).Trim()
+		Write-Warning ("winget Git install failed, falling back to GitHub installer: {0}" -f $msg)
 	}
 
 	# Fallback: download Git for Windows from GitHub releases and run the EXE installer silently
