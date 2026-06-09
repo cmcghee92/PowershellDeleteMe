@@ -121,29 +121,32 @@ function Install-AppInstallerFromMicrosoft {
 		Select-Object -ExpandProperty FullName
 
 	foreach ($dependencyPackage in $dependencyPackages) {
-		Write-Host "Installing dependency package $dependencyPackage"
+		Write-Host "Installing dependency package: $dependencyPackage"
 		Add-AppxPackage -Path $dependencyPackage -ErrorAction Stop
 	}
 
-	Write-Host 'Retrying Microsoft App Installer installation.'
+	Write-Host 'Retrying Microsoft App Installer installation after installing dependencies.'
 	Add-AppxPackage -Path $installerPath -ErrorAction Stop
 }
 
 function Install-CppDesktopBridgeRuntime {
 	param(
-		[string]$MinimumVersion = '14.0.33728.0'
+		[string]$MinimumVersion = '14.0.33519.0'
 	)
 
 	$installedRuntime = Get-AppxPackage -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue | Select-Object -First 1
 	if ($installedRuntime) {
 		if ([version]$installedRuntime.Version -ge [version]$MinimumVersion) {
-			Write-Host "Microsoft.VCLibs.140.00.UWPDesktop is already installed: $($installedRuntime.Version)"
+			Write-Host "Microsoft.VCLibs.140.00.UWPDesktop is already installed with sufficient version: $($installedRuntime.Version)"
 			return
 		}
 
 		Write-Host "Microsoft.VCLibs.140.00.UWPDesktop $($installedRuntime.Version) is older than required $MinimumVersion. Reinstalling."
 		try {
 			Remove-AppxPackage -Package $installedRuntime.PackageFullName -ErrorAction Stop
+			# Wait for the package to be fully removed
+			Write-Host 'Waiting for package removal to complete...'
+			Start-Sleep -Seconds 3
 		} catch {
 			$msg = ($_ | Out-String).Trim()
 			Write-Warning "Removing older Microsoft.VCLibs.140.00.UWPDesktop failed: ${msg}"
@@ -168,6 +171,12 @@ function Install-CppDesktopBridgeRuntime {
 	if ($installResult) {
 		Write-Host 'Microsoft C++ Runtime framework for Desktop Bridge installed successfully.'
 	}
+	
+	# Verify installation
+	$verifyRuntime = Get-AppxPackage -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue | Select-Object -First 1
+	if ($verifyRuntime) {
+		Write-Host "VCLibs installation verified: $($verifyRuntime.Version)"
+	}
 }
 
 function Install-DotNetSdk10 {
@@ -179,7 +188,7 @@ function Install-DotNetSdk10 {
 	$rawOutput = & winget install --id Microsoft.DotNet.SDK.10 --exact --silent --disable-interactivity --accept-source-agreements --accept-package-agreements 2>&1 | Out-String
 	$rc = $LASTEXITCODE
 
-	if ($rc -eq 0 -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions are available' -or $rawOutput -match 'Found an existing package') {
+	if ($rc -eq 0 -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions are ava[...]
 		Write-Host '.NET 10 SDK is installed or up to date.'
 		return
 	}
