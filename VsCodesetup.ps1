@@ -170,6 +170,25 @@ function Install-CppDesktopBridgeRuntime {
 	}
 }
 
+function Install-AppxDependencyFromUrl {
+	param(
+		[Parameter(Mandatory)]
+		[string]$Url,
+
+		[Parameter(Mandatory)]
+		[string]$DestinationPath,
+
+		[Parameter(Mandatory)]
+		[string]$DisplayName
+	)
+
+	Write-Host "Downloading ${DisplayName}."
+	Invoke-WebRequest -Uri $Url -OutFile $DestinationPath
+
+	Write-Host "Installing ${DisplayName}."
+	Add-AppxPackage -Path $DestinationPath -ErrorAction Stop
+}
+
 function Install-DotNetSdk10 {
 	if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 		throw 'winget was not found after installing Microsoft App Installer.'
