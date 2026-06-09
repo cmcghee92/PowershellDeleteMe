@@ -18,9 +18,11 @@ function Refresh-MicrosoftStore {
 function Install-AppInstallerFromMicrosoft {
 	$tempDir = Join-Path $env:TEMP 'powershelldelete-me-setup'
 	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+	$preferredArch = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x86' }
 
 	$installerPath = Join-Path $tempDir 'Microsoft.AppInstaller.msixbundle'
 	Invoke-InstallerDownload -Url 'https://aka.ms/getwinget' -DestinationPath $installerPath
+	Write-Host "Detected operating system architecture: ${preferredArch}"
 
 	Write-Host 'Installing Microsoft App Installer.'
 	try {
@@ -50,13 +52,15 @@ function Install-AppInstallerFromMicrosoft {
 		}
 
 		if ($extracted) {
-			# Find dependency packages (msix/appx) and install runtime packages first
+			# Find dependency packages (msix/appx) and install only the runtime dependencies.
 			$pkgFiles = Get-ChildItem -Path $extractDir -Recurse -Include '*.msix','*.appx' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
-			# Prefer WindowsAppRuntime packages first
-			$runtimePkgs = $pkgFiles | Where-Object { $_ -match 'WindowsAppRuntime' } 
-			$otherPkgs = $pkgFiles | Where-Object { $_ -notin $runtimePkgs }
+			# Prefer WindowsAppRuntime packages first and ignore language/resource bundles.
+			$runtimePkgs = $pkgFiles | Where-Object { $_ -match 'WindowsAppRuntime' -and $_ -match $preferredArch }
+			if (-not $runtimePkgs) {
+				$runtimePkgs = $pkgFiles | Where-Object { $_ -match 'WindowsAppRuntime' }
+			}
 
-			foreach ($p in $runtimePkgs + $otherPkgs) {
+			foreach ($p in $runtimePkgs) {
 				try {
 					Write-Host "Installing dependency package ${p}"
 					Add-AppxPackage -Path $p -ErrorAction Stop
