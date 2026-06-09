@@ -188,7 +188,7 @@ function Install-DotNetSdk10 {
 	$rawOutput = & winget install --id Microsoft.DotNet.SDK.10 --exact --silent --disable-interactivity --accept-source-agreements --accept-package-agreements 2>&1 | Out-String
 	$rc = $LASTEXITCODE
 
-	if ($rc -eq 0 -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions are ava[...]
+	if ($rc -eq 0 -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions available') {
 		Write-Host '.NET 10 SDK is installed or up to date.'
 		return
 	}
