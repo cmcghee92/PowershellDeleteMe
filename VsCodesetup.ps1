@@ -23,7 +23,60 @@ function Install-AppInstallerFromMicrosoft {
 	Invoke-InstallerDownload -Url 'https://aka.ms/getwinget' -DestinationPath $installerPath
 
 	Write-Host 'Installing Microsoft App Installer.'
-	Add-AppxPackage -Path $installerPath
+	try {
+		Add-AppxPackage -Path $installerPath -ErrorAction Stop
+	} catch {
+		$err = $_
+		Write-Warning "Initial Add-AppxPackage failed: $err"
+		# Attempt to extract bundle and install dependency packages (e.g., Windows App Runtime)
+		$extractDir = Join-Path $tempDir 'msixbundle_contents'
+		if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }
+		New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+
+		# Try Expand-Archive first; fall back to .NET extraction if needed
+		$extracted = $false
+		try {
+			Expand-Archive -LiteralPath $installerPath -DestinationPath $extractDir -Force -ErrorAction Stop
+			$extracted = $true
+		} catch {
+			try {
+				Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+				[System.IO.Compression.ZipFile]::ExtractToDirectory($installerPath, $extractDir)
+				$extracted = $true
+			} catch {
+				Write-Warning "Failed to extract msixbundle: $_"
+			}
+		}
+
+		if ($extracted) {
+			# Find dependency packages (msix/appx) and install runtime packages first
+			$pkgFiles = Get-ChildItem -Path $extractDir -Recurse -Include '*.msix','*.appx' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+			# Prefer WindowsAppRuntime packages first
+			$runtimePkgs = $pkgFiles | Where-Object { $_ -match 'WindowsAppRuntime' } 
+			$otherPkgs = $pkgFiles | Where-Object { $_ -notin $runtimePkgs }
+
+			foreach ($p in $runtimePkgs + $otherPkgs) {
+				try {
+					Write-Host "Installing dependency package $p"
+					Add-AppxPackage -Path $p -ErrorAction Stop
+				} catch {
+					Write-Warning "Failed to install dependency package $p: $_"
+				}
+			}
+
+			# Retry installing the bundle
+			try {
+				Write-Host 'Retrying Microsoft App Installer bundle installation.'
+				Add-AppxPackage -Path $installerPath -ErrorAction Stop
+				return
+			} catch {
+				Write-Warning "Retry Add-AppxPackage failed: $_"
+			}
+		}
+
+		# If we reach here, installation failed
+		throw "Failed to install Microsoft App Installer bundle. See previous warnings for details."
+	}
 }
 
 function Ensure-MicrosoftStoreUpToDate {
