@@ -125,13 +125,22 @@ function Install-AppInstallerFromMicrosoft {
 		if ($extracted) {
 			# Find dependency packages (msix/appx) and install only the runtime dependencies.
 			$pkgFiles = Get-ChildItem -Path $extractDir -Recurse -Include '*.msix','*.appx' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
-			# Prefer WindowsAppRuntime packages first and ignore language/resource bundles.
-			$runtimePkgs = $pkgFiles | Where-Object { $_ -match 'WindowsAppRuntime' -and $_ -match $preferredArch }
-			if (-not $runtimePkgs) {
-				$runtimePkgs = $pkgFiles | Where-Object { $_ -match 'WindowsAppRuntime' }
+			$dependencyPkgs = @(
+				$pkgFiles | Where-Object { $_ -match 'VCLibs\.140\.00\.UWPDesktop' -and $_ -match $preferredArch }
+				$pkgFiles | Where-Object { $_ -match 'WindowsAppRuntime' -and $_ -match $preferredArch }
+			)
+
+			if (-not $dependencyPkgs) {
+				$dependencyPkgs = @(
+					$pkgFiles | Where-Object { $_ -match 'VCLibs\.140\.00\.UWPDesktop' }
+					$pkgFiles | Where-Object { $_ -match 'WindowsAppRuntime' }
+				)
 			}
 
-			foreach ($p in $runtimePkgs) {
+			# Prefer WindowsAppRuntime packages first and ignore language/resource bundles.
+			$dependencyPkgs = $dependencyPkgs | Where-Object { $_ } | Select-Object -Unique
+
+			foreach ($p in $dependencyPkgs) {
 				try {
 					Write-Host "Installing dependency package ${p}"
 					Add-AppxPackage -Path $p -ErrorAction Stop
