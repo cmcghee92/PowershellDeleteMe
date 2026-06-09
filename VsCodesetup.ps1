@@ -26,6 +26,74 @@ function Install-AppInstallerFromMicrosoft {
 	Add-AppxPackage -Path $installerPath
 }
 
+function Ensure-MicrosoftStoreUpToDate {
+	param(
+		[string]$MinimumVersion = '12011.1001.0.0'
+	)
+
+	$pkg = Get-AppxPackage -Name Microsoft.WindowsStore -ErrorAction SilentlyContinue
+	if (-not $pkg) {
+		Write-Warning 'Microsoft Store (Microsoft.WindowsStore) not found on this machine.'
+		return
+	}
+
+	try {
+		$current = [version]$pkg.Version
+		$min = [version]$MinimumVersion
+	} catch {
+		Write-Warning "Unable to parse Microsoft Store version '$($pkg.Version)'. Skipping version check."
+		return
+	}
+
+	if ($current -ge $min) {
+		Write-Host "Microsoft Store version $($pkg.Version) meets the minimum requirement."
+		return
+	}
+
+	Write-Warning "Microsoft Store version $($pkg.Version) is older than required $MinimumVersion. Attempting aggressive update steps..."
+
+	# Step 1: Best-effort refresh
+	Refresh-MicrosoftStore
+
+	# Step 2: Re-register the Store package (can repair many Store problems)
+	$manifest = Join-Path $pkg.InstallLocation 'AppxManifest.xml'
+	if (Test-Path $manifest) {
+		try {
+			Write-Host 'Re-registering Microsoft Store package.'
+			Add-AppxPackage -DisableDevelopmentMode -Register $manifest -ErrorAction Stop
+		} catch {
+			Write-Warning "Re-registering Microsoft Store failed: $_"
+		}
+	} else {
+		Write-Warning "AppxManifest not found at $manifest; skipping re-register step."
+	}
+
+	# Step 3: If winget is available, try to upgrade the Store via winget
+	if (Get-Command winget -ErrorAction SilentlyContinue) {
+		try {
+			Write-Host 'Attempting winget upgrade for Microsoft Store.'
+			& winget upgrade --id Microsoft.WindowsStore --exact --silent --disable-interactivity --accept-source-agreements --accept-package-agreements 2>&1 | Out-String | Out-Null
+		} catch {
+			Write-Warning "winget upgrade for Microsoft Store failed: $_"
+		}
+	}
+
+	# Step 4: Re-evaluate version
+	$pkg = Get-AppxPackage -Name Microsoft.WindowsStore -ErrorAction SilentlyContinue
+	if ($pkg) {
+		try { $current = [version]$pkg.Version } catch { }
+		if ($current -ge $min) {
+			Write-Host "Microsoft Store updated to $($pkg.Version)."
+			return
+		}
+	}
+
+	# Step 5: Give user a direct link to update and fail fast
+	Write-Warning "Microsoft Store is still out of date (current: $($pkg.Version)). Opening Store updates page for manual update."
+	try { Start-Process 'ms-windows-store://downloads' -ErrorAction SilentlyContinue } catch { }
+	throw 'Microsoft Store is out of date. Please update the Microsoft Store and re-run this script.'
+}
+
 function Ensure-WingetAvailable {
 	if (Get-Command winget -ErrorAction SilentlyContinue) {
 		return
@@ -219,6 +287,7 @@ function Ensure-RepositoryFolder {
 }
 
 Refresh-MicrosoftStore
+Ensure-MicrosoftStoreUpToDate -MinimumVersion '12011.1001.0.0'
 Ensure-WingetAvailable
 Update-AppInstaller
 
