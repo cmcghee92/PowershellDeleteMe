@@ -48,11 +48,47 @@ function Install-WindowsAppRuntime18 {
 	}
 }
 
+function Install-VCLibs140Desktop {
+	param(
+		[string]$MinimumVersion = '14.0.33728.0'
+	)
+
+	$installedVCLibs = Get-AppxPackage -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue |
+		Where-Object { [version]$_.Version -ge [version]$MinimumVersion } |
+		Select-Object -First 1
+
+	if ($installedVCLibs) {
+		Write-Host "Microsoft.VCLibs.140.00.UWPDesktop is already installed: $($installedVCLibs.Version)"
+		return
+	}
+
+	$tempDir = Join-Path $env:TEMP 'powershelldelete-me-setup'
+	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+	$vclibsUrl = if ([Environment]::Is64BitOperatingSystem) {
+		'https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx'
+	} else {
+		'https://aka.ms/Microsoft.VCLibs.x86.14.00.Desktop.appx'
+	}
+
+	$vclibsPath = Join-Path $tempDir 'Microsoft.VCLibs.140.00.UWPDesktop.appx'
+	Invoke-InstallerDownload -Url $vclibsUrl -DestinationPath $vclibsPath
+
+	Write-Host 'Installing Microsoft.VCLibs.140.00.UWPDesktop.'
+	try {
+		Add-AppxPackage -Path $vclibsPath -ErrorAction Stop
+	} catch {
+		$msg = ($_ | Out-String).Trim()
+		throw "Microsoft.VCLibs.140.00.UWPDesktop installation failed: ${msg}"
+	}
+}
+
 function Install-AppInstallerFromMicrosoft {
 	$tempDir = Join-Path $env:TEMP 'powershelldelete-me-setup'
 	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 	$preferredArch = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x86' }
 
+	Install-VCLibs140Desktop
 	Install-WindowsAppRuntime18
 
 	$installerPath = Join-Path $tempDir 'Microsoft.AppInstaller.msixbundle'
