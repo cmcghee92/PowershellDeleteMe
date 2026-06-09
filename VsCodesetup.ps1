@@ -8,8 +8,8 @@ $IsInstalled = Get-AppxPackage -AllUsers -Name $FrameworkName | Where-Object { $
 if (-not $IsInstalled) {
     Write-Host "[INFO] Missing required framework: $FrameworkName. Installing now..." -ForegroundColor Yellow
    
-    # Define download details for Windows App SDK 1.8
-    $RuntimeUrl = "https://aka.ms/windowsappsdk/1.8/1.8.251106002/windowsappruntimeinstall-x64.exe"
+	# Define download details for Windows App SDK 1.8.8
+	$RuntimeUrl = "https://aka.ms/windowsappsdk/1.8/1.8.260508005/windowsappruntimeinstall-x64.exe"
     $OutputPath = "$env:TEMP\WindowsAppRuntimeInstall-x64.exe"
    
     # Download the web installer bootstrapper
@@ -168,25 +168,6 @@ function Install-CppDesktopBridgeRuntime {
 	if ($installResult) {
 		Write-Host 'Microsoft C++ Runtime framework for Desktop Bridge installed successfully.'
 	}
-}
-
-function Install-AppxDependencyFromUrl {
-	param(
-		[Parameter(Mandatory)]
-		[string]$Url,
-
-		[Parameter(Mandatory)]
-		[string]$DestinationPath,
-
-		[Parameter(Mandatory)]
-		[string]$DisplayName
-	)
-
-	Write-Host "Downloading ${DisplayName}."
-	Invoke-WebRequest -Uri $Url -OutFile $DestinationPath
-
-	Write-Host "Installing ${DisplayName}."
-	Add-AppxPackage -Path $DestinationPath -ErrorAction Stop
 }
 
 function Install-DotNetSdk10 {
