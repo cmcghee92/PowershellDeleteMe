@@ -32,8 +32,10 @@ if (-not $IsInstalled) {
 
     if ($InstallProcess.ExitCode -eq 0) {
         Write-Host "[SUCCESS] Windows App Runtime 1.8 installed successfully." -ForegroundColor Green
+    } elseif ($InstallProcess.ExitCode -eq 3010) {
+        throw "[ERROR] Windows App Runtime 1.8 installed successfully but requires a reboot. Please reboot and re-run this script."
     } else {
-        Write-Warning "[ERROR] Runtime installer exited with code $($InstallProcess.ExitCode). Script might fail."
+        throw "[ERROR] Windows App Runtime 1.8 installer failed with exit code $($InstallProcess.ExitCode)."
     }
 
     # Cleanup installer file
