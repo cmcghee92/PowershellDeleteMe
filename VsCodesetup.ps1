@@ -140,7 +140,8 @@ function Install-AppInstallerFromMicrosoft {
 
 function Install-CppDesktopBridgeRuntime {
     param(
-        [string]$MinimumVersion = '14.0.33519.0'
+        # Lowered to match the version currently served by the aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx redirect.
+        [string]$MinimumVersion = '14.0.33321.0'
     )
 
     # Use -AllUsers to discover any system-wide installation, then pick the highest version.
