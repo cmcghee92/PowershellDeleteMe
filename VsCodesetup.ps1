@@ -143,33 +143,22 @@ function Install-CppDesktopBridgeRuntime {
         [string]$MinimumVersion = '14.0.33519.0'
     )
 
+    # Use -AllUsers to discover any system-wide installation, then pick the highest version.
     $installedRuntime = Get-AppxPackage -AllUsers -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue |
+        Sort-Object { [version]$_.Version } -Descending |
         Select-Object -First 1
-    if ($installedRuntime) {
-        if ([version]$installedRuntime.Version -ge [version]$MinimumVersion) {
-            Write-Host "Microsoft.VCLibs.140.00.UWPDesktop is already installed with sufficient version: $($installedRuntime.Version)"
-            return
-        }
 
-		Write-Host "Microsoft.VCLibs.140.00.UWPDesktop $($installedRuntime.Version) is older than required $MinimumVersion. Reinstalling."
-		try {
-			Remove-AppxPackage -Package $installedRuntime.PackageFullName -ErrorAction Stop
-			# Wait for the package to be fully removed
-			Write-Host 'Waiting for package removal to complete...'
-			Start-Sleep -Seconds 5
-			
-			# Verify removal
-			$stillInstalled = Get-AppxPackage -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue
-			if ($stillInstalled) {
-				Write-Warning "Package removal verification failed. Attempting forced removal..."
-				Remove-AppxPackage -Package $installedRuntime.PackageFullName -AllUsers -ErrorAction Stop
-				Start-Sleep -Seconds 5
-			}
-		} catch {
-			$msg = ($_ | Out-String).Trim()
-			Write-Warning "Removing older Microsoft.VCLibs.140.00.UWPDesktop failed: ${msg}"
-		}
-	}
+    if ($installedRuntime -and [version]$installedRuntime.Version -ge [version]$MinimumVersion) {
+        Write-Host "Microsoft.VCLibs.140.00.UWPDesktop is already installed with sufficient version: $($installedRuntime.Version)"
+        return
+    }
+
+    if ($installedRuntime) {
+        Write-Host "Microsoft.VCLibs.140.00.UWPDesktop $($installedRuntime.Version) is older than required $MinimumVersion. Installing newer version."
+        # Do NOT attempt Remove-AppxPackage here.  The package was discovered via -AllUsers and may
+        # not be registered for the current user, which causes 0x80073CF1.  Installing with
+        # -ForceUpdateFromAnyVersion is sufficient to upgrade the framework in place.
+    }
 
     New-Item -ItemType Directory -Path $script:TempDir -Force | Out-Null
 
@@ -184,13 +173,18 @@ function Install-CppDesktopBridgeRuntime {
     Invoke-WebRequest -Uri $runtimeUrl -OutFile $runtimePath -UseBasicParsing
 
     Write-Host 'Installing Microsoft C++ Runtime framework for Desktop Bridge.'
-    Add-AppxPackage -Path $runtimePath -ErrorAction Stop
+    Add-AppxPackage -Path $runtimePath -ForceUpdateFromAnyVersion -ErrorAction Stop
 
-    # Verify installation
+    # Verify installation meets the minimum version requirement.
     $verifyRuntime = Get-AppxPackage -AllUsers -Name 'Microsoft.VCLibs.140.00.UWPDesktop' -ErrorAction SilentlyContinue |
+        Sort-Object { [version]$_.Version } -Descending |
         Select-Object -First 1
-    if ($verifyRuntime) {
+
+    if ($verifyRuntime -and [version]$verifyRuntime.Version -ge [version]$MinimumVersion) {
         Write-Host "VCLibs installation verified: $($verifyRuntime.Version)"
+    } else {
+        $found = if ($verifyRuntime) { $verifyRuntime.Version } else { 'not found' }
+        throw "Microsoft.VCLibs.140.00.UWPDesktop installation could not be verified (found: $found, required: $MinimumVersion)."
     }
 }
 
@@ -241,10 +235,11 @@ function Install-DotNetSdk10 {
     $rawOutput = & winget install --id Microsoft.DotNet.SDK.10 --exact --silent --disable-interactivity --accept-source-agreements --accept-package-agreements 2>&1 | Out-String
     $rc = $LASTEXITCODE
 
-	if ($rc -eq 0 -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions availab[...]') {
-		Write-Host '.NET 10 SDK is installed or up to date.'
-		return
-	}
+    if ($rc -eq 0 -or $rawOutput -match 'already installed' -or $rawOutput -match 'Already installed' -or
+        $rawOutput -match 'No available upgrade' -or $rawOutput -match 'No newer package versions available') {
+        Write-Host '.NET 10 SDK is installed or up to date.'
+        return
+    }
 
     throw ".NET 10 SDK installation failed. Output:`n$rawOutput"
 }
@@ -262,9 +257,16 @@ if ($version -eq '4.8.1 or later') {
     }
 
     Install-DotNetFramework481
+
+    # Re-read the registry after installation to confirm the version was updated.
     $release = Get-DotNetFrameworkRelease
     $version = if ($release) { Get-DotNetFrameworkVersion -Release $release } else { $null }
     Write-Host ".NET Framework check complete: $version"
+
+    if ($version -ne '4.8.1 or later') {
+        # Exit code 3010 means success + reboot required; the version key may not update until after reboot.
+        Write-Warning ".NET Framework 4.8.1 was not detected after installation (detected: $version). A reboot may be required before the version is reflected in the registry."
+    }
 }
 
 Install-CppDesktopBridgeRuntime
